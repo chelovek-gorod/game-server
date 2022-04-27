@@ -1,6 +1,5 @@
-# sources
-*.psd
-*.cdr
+# dependencies
+/node_modules
 
 # git
 /.git
