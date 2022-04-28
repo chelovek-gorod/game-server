@@ -1,43 +1,60 @@
 const WebSocket = require('ws');
-const lastUpdateDate = '3-01-2022';
+const lastUpdateDate = 'SV-010 [28-04-2022]';
 
 const usedPort = process.env.PORT || 6789;
 const socketServer = new WebSocket.Server({ port: usedPort });
 socketServer.on('connection', onConnect);
 
-class Client {
-  constructor(id, clientNumber) {
-    this.id = id;
-    this.number = clientNumber;
+function countId() {
+  let counter = 0;
+  return function() {
+    return counter++;
   }
-};
+}
+
+var getId = countId();
+
 let clientsArr = [];
 
+// canvas and images description
+const C_WIDTH = 1200;
+const C_HEIGHT = 600;
+const planeWidth = 100;
+const planeHeight = 100;
+const planeHalfWidth = 50;
+const planeHalfHeight = 50;
+
+class Client {
+  constructor(id, socket) {
+    this.id = id;
+    this.socket = socket;
+    this.x = planeWidth * clientsArr.length + planeHalfWidth;
+    this.y = planeHeight * clientsArr.length + planeHalfHeight;
+    this.direction = 0;
+  }
+};
+
 // IF NEW CONNECTION
-function onConnect(socketClient) {
+function onConnect(clientSocket) {
   console.log('-- get new connection --');
 
-  socketClient.on('message', function (message) {
+  clientSocket.on('message', function (message) {
     let { action, data } = JSON.parse(message);
     switch (action) {
-      case 'firstConnect' : getFirstConnect(socketClient); break;
-      case 'move' : getMove(data); break;
+      case 'connect' : getConnect(clientSocket); break;
+      case 'update' : getUpdate(data); break;
       default : getWrongActionInRequest(action, data);
     }
   });
 
-  socketClient.on('close', function () {
-    let target = clientsArr.find(client => client.id === socketClient);
-    clientsArr = clientsArr.filter(client => client.id !== socketClient);
+  clientSocket.on('close', function () {
+    let disconnectedClient = clientsArr.find(client => client.socket === clientSocket);
+    clientsArr = clientsArr.filter(client => client.socket !== clientSocket);
 
-    clientsArr.forEach(client => {
-      client.id.send(JSON.stringify({
-        action: 'updateClientNumbers',
-        data: clientsArr.length
-      }));
-    });
+    let message = JSON.stringify({  action: 'update', data: clientsArr });
+    clientsArr.forEach(client => client.socket.send(message) );
 
-    console.log('-- client ' + target.number + ' disconnect');
+    console.log('-- client ' + disconnectedClient.id + ' disconnect');
   });
 
 }
@@ -45,27 +62,20 @@ function onConnect(socketClient) {
 console.log(`server start on port ${usedPort}`);
 console.log(`last update date is ${lastUpdateDate}`);
 
-function getFirstConnect(socketClient) {
-  let clientNumber = clientsArr.length;
-  let client = new Client(socketClient, clientNumber);
+function getConnect(clientSocket) {
+  let id = getId(); console.log('GET ID', id);
+  let client = new Client(id, clientSocket);
   clientsArr.push(client);
-  socketClient.send(JSON.stringify({ action: 'firstConnect', data: clientNumber }));
-
-  clientsArr.forEach(client => {
-    client.id.send(JSON.stringify({
-      action: 'updateClientNumbers',
-      data: clientsArr.length
-    }));
-  });
+  clientSocket.send(JSON.stringify({ action: 'connect', data: id }));
 }
 
-function getMove(data) {
-  clientsArr.forEach(client => {
-    client.id.send(JSON.stringify({
-      action: 'newMove',
-      data: data
-    }));
-  });
+function getUpdate(data) {
+  let { id, direction } = data;
+  let target = clientsArr.find(client => client.id == id);
+  target.direction += direction;
+  console.log(target);
+  let message = JSON.stringify({  action: 'update', data: clientsArr });
+  clientsArr.forEach(client => client.socket.send(message) );
 }
 
 function getWrongActionInRequest(action, data) {
@@ -74,148 +84,3 @@ function getWrongActionInRequest(action, data) {
   console.log(' - data ' + data);
   console.log('-- -- --');
 }
-
-
-
-
-
-
-
-
-
-//////////////////////////////////////////////////////////////////////
-
-//////////////////////////////////////////////////////////////////////
-
-/*
-
-class Client {
-  constructor(id, nickName, playIs) {
-    this.id = id;
-    this.nickName = nickName;
-    this.avatar = avatar;
-  }
-};
-let clientsArr = [];
-
-class Player {
-  constructor(id, nickName, avatar) {
-    this.id = id;
-    this.nickName = nickName;
-    this.avatar = avatar;
-  }
-};
-let playersArr = [];
-
-class Message {
-  constructor(author, target, message, sticker) {
-    this.author = author; // {nickName, avatar}
-    this.target = target; // {nickName, avatar}
-    this.message = message; // string
-    this.sticker = sticker; // data
-    this.date = Date.now();
-  }
-};
-
-const maxMessagesOnServer = 100;
-let messagesArr = [];
-
-function addNewMessage(message) {
-  clientsArr.forEach(client => {
-    client.id.send(JSON.stringify({
-      action: 'newMessage',
-      data: message
-    }));
-  });
-
-  if (messagesArr.length === maxMessagesOnServer) messagesArr.shift();
-  messagesArr.push(message);
-}
-
-
-function onConnect(socketClient) {
-  console.log('get new connection');
-
-  socketClient.on('message', function (message) {
-    let { action, data } = JSON.parse(message);
-    switch (action) {
-      case 'firstConnect' : getFreeAvatarsRequest(socketClient); break;
-      case 'registration' : getRegistrationRequest(socketClient, data); break;
-      case 'onConnect' : getOnConnectRequest(socketClient, data); break;
-      case 'newMessage' : addNewMessage(data); break;
-      default : getWrongActionInRequest(action, data);
-    }
-  });
-
-  socketClient.on('close', function () {
-
-    let target = clientsArr.find(client => client.id === socketClient);
-    if (!target) target = {avatar: 'avenger', nickName: '-=Avenger=-'};
-    clientsArr = clientsArr.filter(client => client.id !== socketClient);
-    console.log('user disconnect');
-
-    let message = new Message(null, target, 'disconnect', null);
-    addNewMessage(message);
-  });
-
-}
-console.log(`server start on port ${usedPort}`);
-console.log(`last update date is ${lastUpdateDate}`);
-
-function getFreeAvatarsRequest(socketClient) {
-  let avatarsArr = clientsArr.map(client => client.avatar);
-  socketClient.send(JSON.stringify({ action: 'firstConnect', data: avatarsArr }));
-}
-
-function getRegistrationRequest(socketClient, data) {
-  let userAvatarExist = clientsArr.find(object => {
-    if (object.avatar === data.avatar) return true;
-  });
-  let userNickNameExist = clientsArr.find(object => {
-    if (object.nickName === data.nickName) return true;
-  });
-
-  let registrationIs = (userAvatarExist || userNickNameExist) ? false : true;
-
-  if (registrationIs) {
-    let target = {nickName: data.nickName, avatar: data.avatar};
-
-    let message = new Message(null, target, 'newConnect', null);
-    addNewMessage(message);
-
-    let client = new Client(socketClient, data.nickName, data.avatar);
-    clientsArr.push(client);
-  }
-
-  let messages = (registrationIs) ? messagesArr : [];
-  socketClient.send(JSON.stringify({
-    action: 'registration',
-    data: {
-      registrationIs: registrationIs,
-      userAvatarExist : userAvatarExist,
-      userNickNameExist : userNickNameExist,
-      messages: messages
-    }
-  }));
-
-  console.log('userAvatarExist:', userAvatarExist, '; userNickNameExist:', userNickNameExist);
-
-}
-
-function getOnConnectRequest(socketClient, data) {
-  socketClient.send(JSON.stringify({
-    action: 'onConnect',
-    data: { clientSendTime: data, serverSendTime: Date.now() }
-  }));
-}
-
-function getWrongActionInRequest(action, data) {
-  console.log('-- WRONG ACTION --');
-  console.log('-action-');
-  console.log(action);
-  console.log('-data-');
-  console.log(data);
-  console.log('-- -- --');
-}
-
-*/
