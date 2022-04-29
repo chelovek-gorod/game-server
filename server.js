@@ -1,5 +1,5 @@
 const WebSocket = require('ws');
-const lastUpdateDate = 'SV-010 [28-04-2022]';
+const lastUpdateDate = 'SV-012 [29-04-2022]';
 
 const usedPort = process.env.PORT || 6789;
 const socketServer = new WebSocket.Server({ port: usedPort });
@@ -16,23 +16,14 @@ var getId = countId();
 
 let clientsArr = [];
 
-// canvas and images description
-const C_WIDTH = 1200;
-const C_HEIGHT = 600;
-const planeWidth = 100;
-const planeHeight = 100;
-const planeHalfWidth = 50;
-const planeHalfHeight = 50;
-
 class Client {
   constructor(id, socket) {
     this.id = id;
     this.socket = socket;
-    this.x = planeWidth * clientsArr.length + planeHalfWidth;
-    this.y = planeHeight * clientsArr.length + planeHalfHeight;
-    this.direction = 0;
   }
 };
+
+let planesArr = [];
 
 // IF NEW CONNECTION
 function onConnect(clientSocket) {
@@ -42,19 +33,22 @@ function onConnect(clientSocket) {
     let { action, data } = JSON.parse(message);
     switch (action) {
       case 'connect' : getConnect(clientSocket); break;
+      case 'plane' : getPlane(data, clientSocket); break;
       case 'update' : getUpdate(data); break;
-      default : getWrongActionInRequest(action, data);
+      default : getUnknownAction(action, data);
     }
   });
 
   clientSocket.on('close', function () {
     let disconnectedClient = clientsArr.find(client => client.socket === clientSocket);
+
+    planesArr = planesArr.filter(plane => plane.id !== disconnectedClient.id);
     clientsArr = clientsArr.filter(client => client.socket !== clientSocket);
 
-    let message = JSON.stringify({  action: 'update', data: clientsArr });
-    clientsArr.forEach(client => client.socket.send(message) );
+    let message = JSON.stringify({ action: 'update', data: planesArr });
+    clientsArr.forEach(client => client.socket.send(message));
 
-    console.log('-- client ' + disconnectedClient.id + ' disconnect');
+    console.log(`-- client with id ${disconnectedClient.id} disconnect`);
   });
 
 }
@@ -63,24 +57,34 @@ console.log(`server start on port ${usedPort}`);
 console.log(`last update date is ${lastUpdateDate}`);
 
 function getConnect(clientSocket) {
-  let id = getId(); console.log('GET ID', id);
+  let id = getId();
+
   let client = new Client(id, clientSocket);
   clientsArr.push(client);
+
   clientSocket.send(JSON.stringify({ action: 'connect', data: id }));
 }
 
+function getPlane(data, clientSocket) {
+  planesArr.push(data);
+
+  clientSocket.send(JSON.stringify({  action: 'update', data: planesArr }));
+}
+
 function getUpdate(data) {
-  let { id, direction } = data;
-  let target = clientsArr.find(client => client.id == id);
-  target.direction += direction;
-  console.log(target);
-  let message = JSON.stringify({  action: 'update', data: clientsArr });
+  let targetPlane = planesArr.find(plane => plane.id == data.id);
+  targetPlane.x = data.x;
+  targetPlane.y = data.y;
+  targetPlane.direction = data.direction;
+  targetPlane.speed = data.speed;
+
+  let message = JSON.stringify({  action: 'update', data: planesArr });
   clientsArr.forEach(client => client.socket.send(message) );
 }
 
-function getWrongActionInRequest(action, data) {
+function getUnknownAction(action, data) {
   console.log('-- WRONG ACTION --');
-  console.log(' - action ' + action);
-  console.log(' - data ' + data);
+  console.log(`action: ${action}; data:`);
+  console.log(data);
   console.log('-- -- --');
 }
