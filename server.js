@@ -1,9 +1,17 @@
 const WebSocket = require('ws');
-const lastUpdateDate = 'SV-012 [29-04-2022]';
+const lastUpdateDate = 'SV-002 [4-05-2022]';
 
 const usedPort = process.env.PORT || 6789;
 const socketServer = new WebSocket.Server({ port: usedPort });
 socketServer.on('connection', onConnect);
+
+//
+const updateIterationTimeout = 8;
+let updateCounter = 0;
+let timeStamp = Date.now();
+//
+let getUpdateArr = [];
+let getUpdateMaxSize = 30;
 
 function countId() {
   let counter = 0;
@@ -56,6 +64,9 @@ function onConnect(clientSocket) {
 console.log(`server start on port ${usedPort}`);
 console.log(`last update date is ${lastUpdateDate}`);
 
+// start update planes loop
+updateIteration();
+
 function getConnect(clientSocket) {
   let id = getId();
 
@@ -78,8 +89,31 @@ function getUpdate(data) {
   targetPlane.direction = data.direction;
   targetPlane.speed = data.speed;
 
+  //
+  if (getUpdateArr.length < getUpdateMaxSize) {
+    getUpdateArr.push(Date.now());
+    if (getUpdateArr.length === getUpdateMaxSize) {
+      for (let i = 0; i < getUpdateMaxSize - 1; i++) 
+        getUpdateArr[i] = getUpdateArr[i + 1] - getUpdateArr[i];
+      console.log(getUpdateArr);
+    }
+  }
+
+}
+
+function updateIteration() {
   let message = JSON.stringify({  action: 'update', data: planesArr });
   clientsArr.forEach(client => client.socket.send(message) );
+
+  updateCounter++;
+  let nowTime = Date.now();
+  if (nowTime >= timeStamp + 1000) {
+    console.log('*** timer:', ((timeStamp - nowTime) / 1000).toFixed(1), '; counter:', updateCounter);
+    updateCounter = 0;
+    timeStamp = nowTime;
+  }
+
+  setTimeout(updateIteration, updateIterationTimeout);
 }
 
 function getUnknownAction(action, data) {
